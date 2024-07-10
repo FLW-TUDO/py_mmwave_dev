@@ -4,7 +4,7 @@ import math
 import binascii
 import codecs
 import numpy as np
-from parser_scripts.parser_mmw_helper import parser_one_mmw_demo_output_packet #checkMagicPattern, getint16_Q7_9
+#from parser_scripts.parser_mmw_helper import parser_one_mmw_demo_output_packet #checkMagicPattern, getint16_Q7_9
 from lib.utility import *
 from lib.helper import *
 

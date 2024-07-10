@@ -1,0 +1,7 @@
+{
+    "configFileName": "config/xwr68xxconfig.cfg",
+    "visualizer": false,
+    "controlPort": "COM6",
+    "dataPort": "COM5",
+    "fileName": "log/node_x_mmwave_sensor"
+}

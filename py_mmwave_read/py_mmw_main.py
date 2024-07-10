@@ -11,17 +11,58 @@ import pyqtgraph.opengl as gl
 from pyqtgraph.Qt import QtGui
 # import the parser function 
 #from parser_scripts.parser_mmw_demo import parser_one_mmw_demo_output_packet
-from parser_scripts.parser_mmw_helper import parser_one_mmw_demo_output_packet #checkMagicPattern, getint16_Q7_9
+#from parser_scripts.parser_mmw_helper import parser_one_mmw_demo_output_packet #checkMagicPattern, getint16_Q7_9
 from mss.x8_handler import *
 from lib.utility import *
+from lib.ports import *
+from lib.probe import *
 import csv, json, time
 from datetime import datetime
 #from parser_scripts.parser_mmw_helper import checkMagicPattern
+import atexit
+
+# Global running flag
+running = True
+
+def read_config(config_file):
+    with open(config_file, 'r') as file:
+        config = json.load(file)
+    
+    config_file_name = config.get('configFileName', None)
+    visualizer = config.get('visualizer', None)
+    control_port = config.get('controlPort', None)
+    data_port = config.get('dataPort', None)
+    file_name = config.get('fileName', None)
+    
+    return {
+        "configFileName": config_file_name,
+        "visualizer": visualizer,
+        "controlPort": control_port,
+        "dataPort": data_port,
+        "fileName": file_name
+    }
 
 # Change the configuration file name
-configFileName = 'config/xwr68xxconfig.cfg' #xwr68xx_profile_range.cfg xwr68xxconfig.cfg
+#configFileName = 'config/xwr68xxconfig.cfg' #xwr68xx_profile_range.cfg xwr68xxconfig.cfg
+
+
+config_file = 'config/py_mmw_setup.json'  # Path to your JSON config file
+pymmw_setup = read_config(config_file)
+#filename = f'Node1_mmw_demo_output_{current_datetime}.txt'
+
+configFileName = pymmw_setup["configFileName"]
+visualizer = pymmw_setup["visualizer"]
+controlPort_ = pymmw_setup["controlPort"]
+dataPort_ = pymmw_setup["dataPort"]
 current_datetime = datetime.now().strftime("%Y%m%d_%H%M%S")
-filename = f'Node1_mmw_demo_output_{current_datetime}.txt'
+filename = pymmw_setup["fileName"] + '_' + current_datetime + '.txt'
+
+
+print("Config File Name:", pymmw_setup["configFileName"])
+print("Visualizer:", pymmw_setup["visualizer"])
+print("Control Port:", pymmw_setup["controlPort"])
+print("Data Port:", pymmw_setup["dataPort"])
+print("File Name:", filename)
 
 # Change the debug variable to use print()
 DEBUG = False
@@ -65,6 +106,7 @@ TLV_type = {
 # word array to convert 4 bytes to a 32 bit number
 word = [1, 2**8, 2**16, 2**24]
 
+
 def getTimeDiff(start_timestamp):
     if gDebugStats == 1:
         return int(time.time() * 1000) - start_timestamp
@@ -73,10 +115,10 @@ def getTimeDiff(start_timestamp):
 
 # Function to configure the serial ports and send the data from
 # the configuration file to the radar
-def serialConfig(configFileName):
+def serialConfig(configFileName, controlPort, dataPort):
     
-    global CLIport
-    global Dataport
+    # global CLIport
+    # global Dataport
     # Open the serial ports for the configuration and the data ports
     
     # Raspberry pi
@@ -84,11 +126,13 @@ def serialConfig(configFileName):
     #Dataport = serial.Serial('/dev/ttyACM1', 921600)
     
     # Windows
-    CLIport = serial.Serial("COM4", 115200, timeout=0.01)#serial.Serial('COM11', 115200)
+    CLIport = serial.Serial(controlPort, 115200, timeout=0.01)#serial.Serial('COM11', 115200)
     if CLIport is None: raise Exception('not able to connect to control port')
 
-    Dataport = serial.Serial("COM3", 921600, timeout=0.01)#serial.Serial('COM12', 921600)
+    Dataport = serial.Serial(dataPort, 921600, timeout=0.01)#serial.Serial('COM12', 921600)
     if Dataport is None: raise Exception('not able to connect to control port')
+
+    print(f"serial config: {CLIport} and {Dataport}")
 
     # Read the configuration file and send it to the board
     config = [line.rstrip('\r\n') for line in open(configFileName)]
@@ -137,6 +181,17 @@ def parseConfigFile(configFileName):
             numFrames = int(splitWords[4]);
             framePeriodicity = int(splitWords[5]);
 
+        # Get the information about the guiMonitor   
+        elif "guiMonitor" in splitWords[0]:
+            
+            detectedObjects = int(splitWords[2]);
+            logMagRange = int(splitWords[3]);
+            noiseProfile = int(splitWords[4]);
+            rangeAzimuthHeatMap = int(splitWords[5]);
+            rangeDopplerHeatMap = int(splitWords[6]);
+            sideInfo = int(splitWords[7]);
+            print(f"guiMonitor: {detectedObjects}, {logMagRange}, {noiseProfile}, {rangeAzimuthHeatMap}, {rangeDopplerHeatMap}, {sideInfo}")
+
           
     # Combine the read data to obtain the configuration parameters           
     numChirpsPerFrame = (chirpEndIdx - chirpStartIdx + 1) * numLoops
@@ -147,7 +202,12 @@ def parseConfigFile(configFileName):
     configParameters["dopplerResolutionMps"] = 3e8 / (2 * startFreq * 1e9 * (idleTime + rampEndTime) * 1e-6 * configParameters["numDopplerBins"] * numTxAnt)
     configParameters["maxRange"] = (300 * 0.9 * digOutSampleRate)/(2 * freqSlopeConst * 1e3)
     configParameters["maxVelocity"] = 3e8 / (4 * startFreq * 1e9 * (idleTime + rampEndTime) * 1e-6 * numTxAnt)
-    
+    configParameters["detectedObjects"] = detectedObjects
+    configParameters["logMagRange"] = logMagRange
+    configParameters["noiseProfile"] = noiseProfile
+    configParameters["rangeAzimuthHeatMap"] = rangeAzimuthHeatMap
+    configParameters["rangeDopplerHeatMap"] = rangeDopplerHeatMap
+    configParameters["sideInfo"] = sideInfo
     #print(f"cfg param: chirpEndIdx: {chirpEndIdx}, chirpStartIdx: {chirpStartIdx}, numAdcSamples: {numAdcSamples}, \
     #      digOutSampleRate: {digOutSampleRate}, freqSlopeConst: {freqSlopeConst}, numRangeBins: {configParameters["numRangeBins"]}")  
     return configParameters
@@ -166,6 +226,7 @@ def convert_to_native(obj):
 # USE parser_mmw_demo SCRIPT TO PARSE ABOVE INPUT FILES
 ##################################################################################
 def readAndParseData68xx(Dataport, configParameters):
+    #print("readAndParseData68xx")
     #load from serial
     global byteBuffer, byteBufferLength
 
@@ -232,10 +293,10 @@ def readAndParseData68xx(Dataport, configParameters):
     if magicOK:
         # Read the entire buffer
         readNumBytes = byteBufferLength
-        if(True):
+        if(DEBUG):
             print("readNumBytes: ", readNumBytes)
         allBinData = byteBuffer
-        if(True):
+        if(DEBUG):
             print("allBinData: ", allBinData[0], allBinData[1], allBinData[2], allBinData[3])
 
 
@@ -248,6 +309,7 @@ def readAndParseData68xx(Dataport, configParameters):
         #initialize mandatory variables for flag condition
         byteVecIdx = 0
         tlvidx = 0
+
         byteVecIdx_detObjs = -1
         byteVecIdx_rangeProfile = -1
         byteVecIdx_noiseProfile = -1
@@ -263,6 +325,7 @@ def readAndParseData68xx(Dataport, configParameters):
             if checkMagicPattern(allBinData[index:index+8:1]) == 1:
                 headerStartIndex = index
                 break
+        print("after check magic pattern")
 
         # Read the header
         magicNumber = allBinData[byteVecIdx:byteVecIdx+8]
@@ -322,17 +385,12 @@ def readAndParseData68xx(Dataport, configParameters):
 
                     if tlvType == TLV_type["MMWDEMO_OUTPUT_MSG_DETECTED_POINTS"]:
                         byteVecIdx_detObjs = byteVecIdx
-                        #print("TLV: ", tlvType, ", byteVecIdx: ", byteVecIdx, "value: ", allBinData[byteVecIdx:byteVecIdx+16])
                     elif tlvType == TLV_type["MMWDEMO_OUTPUT_MSG_RANGE_PROFILE"]:
                         tlvLen_rangeProfile = tlvLen
                         byteVecIdx_rangeProfile = byteVecIdx
-                        #print("TLV: ", tlvType, ", byteVecIdx: ", byteVecIdx)
                     elif tlvType == TLV_type["MMWDEMO_OUTPUT_MSG_NOISE_PROFILE"]:
                         tlvLen_noiseProfile = tlvLen
                         byteVecIdx_noiseProfile = byteVecIdx
-                        #print("TLV: ", tlvType, ", byteVecIdx: ", byteVecIdx)
-                        #processRangeNoiseProfile(bytevec, byteVecIdx, Params, False)
-                        #gatherParamStats(Params["plot"]["noiseStats"], getTimeDiff(start_tlv_ticks))
                     elif tlvType == TLV_type["MMWDEMO_OUTPUT_MSG_AZIMUT_STATIC_HEAT_MAP"]:
                         print("TLV azimuth heatmap: ", tlvType, ", byteVecIdx: ", byteVecIdx)
                         # processAzimuthHeatMap(bytevec, byteVecIdx, Params)
@@ -360,8 +418,6 @@ def readAndParseData68xx(Dataport, configParameters):
                         # gatherParamStats(Params["plot"]["cpuloadStats"], getTimeDiff(start_tlv_ticks))
                     elif tlvType == TLV_type["MMWDEMO_OUTPUT_MSG_DETECTED_POINTS_SIDE_INFO"]:
                         byteVecIdx_sideInfo = byteVecIdx
-                        print("TLV: ", tlvType, ", byteVecIdx: ", byteVecIdx)
-                        
 
                     byteVecIdx += tlvLen
 
@@ -397,7 +453,6 @@ def readAndParseData68xx(Dataport, configParameters):
                     #print("range profile array: ", range_prof_data)
                 if (byteVecIdx_noiseProfile > -1 and tlvLen_noiseProfile > -1):
                     range_noise_data = process_range_profile(byteVecIdx_noiseProfile, tlvLen_noiseProfile, allBinData, configParameters["numRangeBins"])
-
 
 
         # end of changes ---------------------------
@@ -461,12 +516,6 @@ def readAndParseData68xx(Dataport, configParameters):
 
     return dataOk, frameNumber, detObj
 
-def _input_(prt):  # accept keyboard input and forward to control port
-    while not sys.stdin.closed:
-        line = sys.stdin.readline()   
-        if not line.startswith('%'):
-            prt.write(line.encode())
-
 def send_reset_command(prt):
     """Send the resetSystem command to the control port."""
     try:
@@ -476,33 +525,82 @@ def send_reset_command(prt):
     except Exception as e:
         print(f"Failed to send reset command: {e}")
 
-running = True
+def update_non_plot():
+        
+    dataOk = 0
+    global detObj
+    x = []
+    y = []
+    z = []
+    snr = []
+    
+    # Read and parse the received data
+    dataOk, frameNumber, detObj = readAndParseData68xx(Dataport, configParameters)
+    print("update dataOk: ", dataOk, "detObj: ", detObj)
+                
+    if dataOk and len(detObj["x"]) > 0:
+        print("update: ", detObj)
+        x = detObj["x"]
+        y = detObj["y"]
+        z = detObj["z"]
+        snr = detObj["snr"]
+
+    return dataOk
+
+# def signal_handler(sig, frame):
+#     global running
+#     running = False
+#     time.sleep(0.01)
+#     print("Ctrl+C pressed. Exiting...")
+#     CLIport.write(('sensorStop\n').encode())
+#     print("except Send Sensor Stop!")
+#     time.sleep(0.01)
+#     CLIport.close()
+#     Dataport.close()
+#     print("except CLI and Dataport Stop!")
+    
+#     if visualizer:
+#         QtWidgets.QApplication.quit()
+#         #win.close()
+
 def signal_handler(sig, frame):
     global running
     running = False
     print("Ctrl+C pressed. Exiting...")
-    QtWidgets.QApplication.quit()
-    # CLIport.write(('sensorStop\n').encode())
-    # print("except Send Sensor Stop!")
-    # CLIport.close()
-    # Dataport.close()
-    # print("except CLI and Dataport Stop!")
-    #win.close()
+    if CLIport.is_open:
+        CLIport.write(('sensorStop\n').encode())
+        CLIport.close()
+        print("signal handler: Send Sensor Stop and CLIPort is closed!")
+    if Dataport.is_open:
+        Dataport.close()
+        print("signal handler: Data Port is closed!")
+    if visualizer:
+        QtWidgets.QApplication.quit()
+    sys.exit(0)
 
+def close_ports():
+    if CLIport.is_open:
+        CLIport.write(('sensorStop\n').encode())
+        CLIport.close()
+    if Dataport.is_open:
+        Dataport.close()
+
+atexit.register(close_ports)
 
 class MyWidget(QtWidgets.QWidget):  # Change to QWidget for main application
 
     def __init__(self, parent=None):
         super().__init__(parent=parent)
 
-        self.mainLayout = QtWidgets.QVBoxLayout()
-        self.setLayout(self.mainLayout)
+
 
         self.timer = QtCore.QTimer(self)
         self.timer.setInterval(50) # in milliseconds
         self.timer.start()
         self.timer.timeout.connect(self.onNewData)
 
+        self.mainLayout = QtWidgets.QVBoxLayout()
+        self.setLayout(self.mainLayout)
         # Create the 3D plot
         self.glViewWidget = gl.GLViewWidget()
         #self.glViewWidget.setBackgroundColor('w')  # Set background color to white
@@ -532,51 +630,51 @@ class MyWidget(QtWidgets.QWidget):  # Change to QWidget for main application
         self.addAxisLabels()
 
     def setData(self, x, y, z, snr):
-        #snr = snr / 0.1
-        pos = np.vstack((x, y, z)).transpose()
-        color = self.getColorFromSNR(snr)
-        self.scatterPlotItem.setData(pos=pos, size=5, color=color, pxMode=True)
+            #snr = snr / 0.1
+            pos = np.vstack((x, y, z)).transpose()
+            color = self.getColorFromSNR(snr)
+            self.scatterPlotItem.setData(pos=pos, size=5, color=color, pxMode=True)
 
     def addAxisLabels(self):
-        axis_length = 10
-        tick_interval = 1
+            axis_length = 10
+            tick_interval = 1
 
-        x_axis = gl.GLLinePlotItem(pos=np.array([[0, 0, 0], [axis_length, 0, 0]]), color=(1, 0, 0, 1), width=2)
-        y_axis = gl.GLLinePlotItem(pos=np.array([[0, 0, 0], [0, axis_length, 0]]), color=(0, 1, 0, 1), width=2)
-        z_axis = gl.GLLinePlotItem(pos=np.array([[0, 0, 0], [0, 0, axis_length]]), color=(0, 0, 1, 1), width=2)
-        
-        self.glViewWidget.addItem(x_axis)
-        self.glViewWidget.addItem(y_axis)
-        self.glViewWidget.addItem(z_axis)
-        
-        x_label = gl.GLTextItem(pos=[axis_length, 0, 0], text='X (m)', color=(1, 0, 0, 1))
-        y_label = gl.GLTextItem(pos=[0, axis_length, 0], text='Y (m)', color=(0, 1, 0, 1))
-        z_label = gl.GLTextItem(pos=[0, 0, axis_length], text='Z (m)', color=(0, 0, 1, 1))
-        
-        self.glViewWidget.addItem(x_label)
-        self.glViewWidget.addItem(y_label)
-        self.glViewWidget.addItem(z_label)
+            x_axis = gl.GLLinePlotItem(pos=np.array([[0, 0, 0], [axis_length, 0, 0]]), color=(1, 0, 0, 1), width=2)
+            y_axis = gl.GLLinePlotItem(pos=np.array([[0, 0, 0], [0, axis_length, 0]]), color=(0, 1, 0, 1), width=2)
+            z_axis = gl.GLLinePlotItem(pos=np.array([[0, 0, 0], [0, 0, axis_length]]), color=(0, 0, 1, 1), width=2)
+            
+            self.glViewWidget.addItem(x_axis)
+            self.glViewWidget.addItem(y_axis)
+            self.glViewWidget.addItem(z_axis)
+            
+            x_label = gl.GLTextItem(pos=[axis_length, 0, 0], text='X (m)', color=(1, 0, 0, 1))
+            y_label = gl.GLTextItem(pos=[0, axis_length, 0], text='Y (m)', color=(0, 1, 0, 1))
+            z_label = gl.GLTextItem(pos=[0, 0, axis_length], text='Z (m)', color=(0, 0, 1, 1))
+            
+            self.glViewWidget.addItem(x_label)
+            self.glViewWidget.addItem(y_label)
+            self.glViewWidget.addItem(z_label)
 
-        # Add tick marks and labels for the x-axis
-        for i in range(0, axis_length + 1, tick_interval):
-            tick = gl.GLLinePlotItem(pos=np.array([[i, -0.1, 0], [i, 0.1, 0]]), color=(1, 0, 0, 1), width=2)
-            tick_label = gl.GLTextItem(pos=[i, -0.5, 0], text=f'{i}', color=(1, 0, 0, 1))
-            self.glViewWidget.addItem(tick)
-            self.glViewWidget.addItem(tick_label)
+            # Add tick marks and labels for the x-axis
+            for i in range(0, axis_length + 1, tick_interval):
+                tick = gl.GLLinePlotItem(pos=np.array([[i, -0.1, 0], [i, 0.1, 0]]), color=(1, 0, 0, 1), width=2)
+                tick_label = gl.GLTextItem(pos=[i, -0.5, 0], text=f'{i}', color=(1, 0, 0, 1))
+                self.glViewWidget.addItem(tick)
+                self.glViewWidget.addItem(tick_label)
 
-        # Add tick marks and labels for the y-axis
-        for i in range(0, axis_length + 1, tick_interval):
-            tick = gl.GLLinePlotItem(pos=np.array([[-0.1, i, 0], [0.1, i, 0]]), color=(0, 1, 0, 1), width=2)
-            tick_label = gl.GLTextItem(pos=[-0.5, i, 0], text=f'{i}', color=(0, 1, 0, 1))
-            self.glViewWidget.addItem(tick)
-            self.glViewWidget.addItem(tick_label)
+            # Add tick marks and labels for the y-axis
+            for i in range(0, axis_length + 1, tick_interval):
+                tick = gl.GLLinePlotItem(pos=np.array([[-0.1, i, 0], [0.1, i, 0]]), color=(0, 1, 0, 1), width=2)
+                tick_label = gl.GLTextItem(pos=[-0.5, i, 0], text=f'{i}', color=(0, 1, 0, 1))
+                self.glViewWidget.addItem(tick)
+                self.glViewWidget.addItem(tick_label)
 
-        # Add tick marks and labels for the z-axis
-        for i in range(0, axis_length + 1, tick_interval):
-            tick = gl.GLLinePlotItem(pos=np.array([[-0.1, 0, i], [0.1, 0, i]]), color=(0, 0, 1, 1), width=2)
-            tick_label = gl.GLTextItem(pos=[-0.5, 0, i], text=f'{i}', color=(0, 0, 1, 1))
-            self.glViewWidget.addItem(tick)
-            self.glViewWidget.addItem(tick_label)
+            # Add tick marks and labels for the z-axis
+            for i in range(0, axis_length + 1, tick_interval):
+                tick = gl.GLLinePlotItem(pos=np.array([[-0.1, 0, i], [0.1, 0, i]]), color=(0, 0, 1, 1), width=2)
+                tick_label = gl.GLTextItem(pos=[-0.5, 0, i], text=f'{i}', color=(0, 0, 1, 1))
+                self.glViewWidget.addItem(tick)
+                self.glViewWidget.addItem(tick_label)
 
     def getColorFromSNR(self, snr):
         norm = (snr - np.min(snr)) / (np.max(snr) - np.min(snr))
@@ -599,18 +697,14 @@ class MyWidget(QtWidgets.QWidget):  # Change to QWidget for main application
         
         # Read and parse the received data
         dataOk, frameNumber, detObj = readAndParseData68xx(Dataport, configParameters)
-        print("self update dataOk: ", dataOk, "detObj X: ", len(detObj["x"]))
+        #print("self update dataOk: ", dataOk, "detObj X: ", len(detObj["x"]))
                     
-        x = detObj["x"]
-        y = detObj["y"]
-        z = detObj["z"]
-        snr = detObj["snr"]
-        # if dataOk and len(detObj["x"]) > 0:
-        #     print("update: ", detObj)
-        #     x = detObj["x"]
-        #     y = detObj["y"]
-        #     z = detObj["z"]
-        #     snr = detObj["snr"]
+        if dataOk and len(detObj["x"]) > 0:
+            print("update: ", detObj)
+            x = detObj["x"]
+            y = detObj["y"]
+            z = detObj["z"]
+            snr = detObj["snr"]
 
         return dataOk, x, y, z, snr
 
@@ -619,54 +713,193 @@ class MyWidget(QtWidgets.QWidget):  # Change to QWidget for main application
         
         # Update the data and check if the data is okay        
         dataOk, newx, newy, newz, newsnr = self.update()
-        if dataOk:
+        if dataOk and visualizer:
             self.setData(newx, newy, newz, newsnr)
             print(f"onNewData x: {newx}, y: {newy}, z: {newz}, snr: {newsnr}")
-        
-
 
 def main():
+    global configParameters, CLIport, Dataport
     signal.signal(signal.SIGINT, signal_handler)  # Set up the signal handler
-
+    nrst = True
+    
+    frameData = {}    
+    currentIndex = 0
+    # Main loop 
     try:
+        # dev, prts = None, (None, None)
+        # no_discovery = False
+
+        # nrst = nrst and not no_discovery
+
+        # #nrst = True
+
+        # print("nrst mode 1: ", nrst)
+
+        # if nrst:
+        #     try:
+        #         print("discover usb")
+        #         dev = usb_discover(*XDS_USB)
+        #         if len(dev) == 0: raise Exception('no device detected')
+            
+        #         dev = dev[0]
+        #         print_log(' - '.join([dev._details_[k] for k in dev._details_]))
+        #         print("nrst true")
+
+        #         for rst in (False,):
+        #             try:
+        #                 xds_test(dev, reset=rst)
+        #                 break
+        #             except:
+        #                 pass
+                        
+        #         prts = serial_discover(*XDS_USB, sid=dev._details_['serial'])
+        #         if len(prts) != 2: raise Exception('unknown device configuration detected')
+            
+        #     except:
+        #         nrst = False
+        #         print("nrst false")
+        
+        
         # Configurate the serial port
-        CLIport, Dataport = serialConfig(configFileName)
+        CLIport, Dataport = serialConfig(configFileName, controlPort_, dataPort_)
 
         # Get the configuration parameters from the configuration file
-        global configParameters 
+        
         configParameters = parseConfigFile(configFileName)
         #time.sleep(0.1)
+        
         #Reset for the first time
-        send_reset_command(CLIport)
-        #time.sleep(0.1)
+        # ---
+        nrst = True
+        print("nrst mode 2: ", nrst)
 
-        app = QtWidgets.QApplication([])
+        if nrst:
+            send_reset_command(CLIport)
+        else:
+            print('\nwaiting for reset (NRST) of the device', file=sys.stderr, flush=True)
 
-        pg.setConfigOptions(antialias=False) # True seems to work as well
+        while running:
+        
+            # Update the data and check if the data is okay
+            #dataOk, frameNumber, detObj = readAndParseData68xx(Dataport, configParameters)
+            dataOk = update_non_plot()
+            #print("detObj: ", detObj)
+            if dataOk:
+                # Store the current frame into frameData
+                frameData[currentIndex] = detObj
+                currentIndex += 1
+                #print("loop", currentIndex)
+        
+            time.sleep(0.05) # Sampling frequency of 30 Hz
 
-        win = MyWidget()
-        win.show()
-        win.resize(800,600) 
-        win.raise_()
+    except Exception as e: 
+        #KeyboardInterrupt:
+        if CLIport.is_open:
+            CLIport.write(('sensorStop\n').encode())
+            CLIport.close()
+            print("Exception: Send Sensor Stop and CLIPort is closed!")
+        if Dataport.is_open:
+            Dataport.close()
+            print("Exception: Data Port is closed!")
 
-        app.exec_()
-
-    except KeyboardInterrupt:
-        CLIport.write(('sensorStop\n').encode())
-        print("except Send Sensor Stop!")
-        CLIport.close()
-        Dataport.close()
-        print("except CLI and Dataport Stop!")
-        win.close()
     finally:
-        if 'CLIport' in locals() and CLIport.is_open:
+        if 'CLIport' in globals() and CLIport.is_open:
             CLIport.write(('sensorStop\n').encode())
             print("finally Send Sensor Stop!")
             CLIport.close()
-        if 'Dataport' in locals() and Dataport.is_open:
+        if 'Dataport' in globals() and Dataport.is_open:
             print("finally Dataport Stop!")
+            Dataport.close()   
+
+
+def main_with_Qt():
+    signal.signal(signal.SIGINT, signal_handler)  # Set up the signal handler
+    # nrst = True
+
+    # dev, prts = None, (None, None)
+    # no_discovery = False
+
+    # nrst = nrst and not no_discovery
+
+    # #nrst = True
+
+    # print("nrst mode 1: ", nrst)
+
+    # if nrst:
+    #     try:
+    #         print("discover usb")
+    #         dev = usb_discover(*XDS_USB)
+    #         if len(dev) == 0: raise Exception('no device detected')
+        
+    #         dev = dev[0]
+    #         print_log(' - '.join([dev._details_[k] for k in dev._details_]))
+    #         print("nrst true")
+
+    #         for rst in (False,):
+    #             try:
+    #                 xds_test(dev, reset=rst)
+    #                 break
+    #             except:
+    #                 pass
+                    
+    #         prts = serial_discover(*XDS_USB, sid=dev._details_['serial'])
+    #         if len(prts) != 2: raise Exception('unknown device configuration detected')
+        
+    #     except:
+    #         nrst = False
+    #         print("nrst false")
+    
+
+    global configParameters, CLIport, Dataport
+    # Configurate the serial port
+    CLIport, Dataport = serialConfig(configFileName, controlPort_, dataPort_)
+
+    # Get the configuration parameters from the configuration file
+    
+    configParameters = parseConfigFile(configFileName)
+    #time.sleep(0.1)
+    
+    #Reset for the first time
+    # ---
+    nrst = True
+    print("nrst mode 2: ", nrst)
+
+    if nrst:
+        send_reset_command(CLIport)
+    else:
+        print('\nwaiting for reset (NRST) of the device', file=sys.stderr, flush=True)
+
+    try:
+        app = QtWidgets.QApplication([])
+        pg.setConfigOptions(antialias=False) # True seems to work as well
+        win = MyWidget()
+        win.show()
+        win.resize(800, 600)
+        app.exec_()
+
+    except Exception as e: 
+        #KeyboardInterrupt:
+        if CLIport.is_open:
+            CLIport.write(('sensorStop\n').encode())
+            CLIport.close()
+            print("Exception: Send Sensor Stop and CLIPort is closed!")
+        if Dataport.is_open:
             Dataport.close()
+            print("Exception: Data Port is closed!")
+
+    finally:
+        if 'CLIport' in globals() and CLIport.is_open:
+            CLIport.write(('sensorStop\n').encode())
+            print("finally Send Sensor Stop!")
+            CLIport.close()
+        if 'Dataport' in globals() and Dataport.is_open:
+            print("finally Dataport Stop!")
+            Dataport.close()   
 
 
 if __name__ == "__main__":
-    main()
+    #main_with_Qt()
+    if visualizer:
+        main_with_Qt()
+    else:
+        main()

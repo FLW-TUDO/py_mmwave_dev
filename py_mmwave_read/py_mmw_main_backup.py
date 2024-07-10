@@ -11,13 +11,17 @@ import pyqtgraph.opengl as gl
 from pyqtgraph.Qt import QtGui
 # import the parser function 
 #from parser_scripts.parser_mmw_demo import parser_one_mmw_demo_output_packet
-from parser_scripts.parser_mmw_demo import parser_one_mmw_demo_output_packet #checkMagicPattern, getint16_Q7_9
-# from mss.x8_handler import *
-# from lib.utility import *
+from parser_scripts.parser_mmw_helper_example import parser_one_mmw_demo_output_packet #checkMagicPattern, getint16_Q7_9
+from mss.x8_handler import *
+from lib.utility import *
+import csv, json, time
+from datetime import datetime
 #from parser_scripts.parser_mmw_helper import checkMagicPattern
 
 # Change the configuration file name
 configFileName = 'config/xwr68xxconfig.cfg' #xwr68xx_profile_range.cfg xwr68xxconfig.cfg
+current_datetime = datetime.now().strftime("%Y%m%d_%H%M%S")
+filename = f'Node1_mmw_demo_output_{current_datetime}.txt'
 
 # Change the debug variable to use print()
 DEBUG = False
@@ -80,8 +84,11 @@ def serialConfig(configFileName):
     #Dataport = serial.Serial('/dev/ttyACM1', 921600)
     
     # Windows
-    CLIport = serial.Serial("COM11", 115200, timeout=0.01)#serial.Serial('COM11', 115200)
-    Dataport = serial.Serial("COM12", 921600, timeout=0.01)#serial.Serial('COM12', 921600)
+    CLIport = serial.Serial("COM6", 115200, timeout=0.01)#serial.Serial('COM11', 115200)
+    if CLIport is None: raise Exception('not able to connect to control port')
+
+    Dataport = serial.Serial("COM5", 921600, timeout=0.01)#serial.Serial('COM12', 921600)
+    if Dataport is None: raise Exception('not able to connect to control port')
 
     # Read the configuration file and send it to the board
     config = [line.rstrip('\r\n') for line in open(configFileName)]
@@ -130,7 +137,7 @@ def parseConfigFile(configFileName):
             numFrames = int(splitWords[4]);
             framePeriodicity = int(splitWords[5]);
 
-            
+          
     # Combine the read data to obtain the configuration parameters           
     numChirpsPerFrame = (chirpEndIdx - chirpStartIdx + 1) * numLoops
     configParameters["numDopplerBins"] = numChirpsPerFrame / numTxAnt
@@ -141,8 +148,20 @@ def parseConfigFile(configFileName):
     configParameters["maxRange"] = (300 * 0.9 * digOutSampleRate)/(2 * freqSlopeConst * 1e3)
     configParameters["maxVelocity"] = 3e8 / (4 * startFreq * 1e9 * (idleTime + rampEndTime) * 1e-6 * numTxAnt)
     
+    #print(f"cfg param: chirpEndIdx: {chirpEndIdx}, chirpStartIdx: {chirpStartIdx}, numAdcSamples: {numAdcSamples}, \
+    #      digOutSampleRate: {digOutSampleRate}, freqSlopeConst: {freqSlopeConst}, numRangeBins: {configParameters["numRangeBins"]}")  
     return configParameters
 
+# Function to convert numpy types to native Python types
+def convert_to_native(obj):
+    if isinstance(obj, np.integer):
+        return int(obj)
+    elif isinstance(obj, np.floating):
+        return float(obj)
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    else:
+        return obj
 ##################################################################################
 # USE parser_mmw_demo SCRIPT TO PARSE ABOVE INPUT FILES
 ##################################################################################
@@ -152,9 +171,21 @@ def readAndParseData68xx(Dataport, configParameters):
 
     # Initialize variables
     magicOK = 0 # Checks if magic number has been read
-    dataOK = 0 # Checks if the data has been read correctly
+    dataOk = 0 # Checks if the data has been read correctly
     frameNumber = 0
     detObj = {}
+    detectedX_array = []
+    detectedY_array = []
+    detectedZ_array = []
+    detectedV_array = []
+    detectedRange_array = []
+    detectedAzimuth_array = []
+    detectedElevAngle_array = []
+    detectedSNR_array = []
+    detectedNoise_array = []
+    range_prof_data =[]
+    range_noise_data =[]
+    word = [1, 2**8, 2**16, 2**24]
 
     readBuffer = Dataport.read(Dataport.in_waiting)
     byteVec = np.frombuffer(readBuffer, dtype = 'uint8')
@@ -211,36 +242,170 @@ def readAndParseData68xx(Dataport, configParameters):
         # init local variables
         totalBytesParsed = 0;
         numFramesParsed = 0;
+        
+        # changes ----------------------------
 
-        # original -------------------------------
+        #initialize mandatory variables for flag condition
+        byteVecIdx = 0
+        tlvidx = 0
+        byteVecIdx_detObjs = -1
+        byteVecIdx_rangeProfile = -1
+        byteVecIdx_noiseProfile = -1
+        tlvLen_rangeProfile = -1
+        tlvLen_noiseProfile = -1
+        byteVecIdx_sideInfo = -1
 
-        # parser_one_mmw_demo_output_packet extracts only one complete frame at a time
-        # so call this in a loop till end of file
-        #             
-        # parser_one_mmw_demo_output_packet function already prints the
-        # parsed data to stdio. So showcasing only saving the data to arrays 
-        # here for further custom processing
-        parser_result, \
-        headerStartIndex,  \
-        totalPacketNumBytes, \
-        numDetObj,  \
-        numTlv,  \
-        subFrameNumber,  \
-        detectedX_array,  \
-        detectedY_array,  \
-        detectedZ_array,  \
-        detectedV_array,  \
-        detectedRange_array,  \
-        detectedAzimuth_array,  \
-        detectedElevation_array,  \
-        detectedSNR_array,  \
-        detectedNoise_array, \
-        rangeProfile = parser_one_mmw_demo_output_packet(allBinData[totalBytesParsed::1], readNumBytes-totalBytesParsed,DEBUG)
-        #print("range Profile: ", rangeProfile)
+        result = TC_PASS
+
+        headerStartIndex = -1
+
+        for index in range (readNumBytes):
+            if checkMagicPattern(allBinData[index:index+8:1]) == 1:
+                headerStartIndex = index
+                break
+
+        # Read the header
+        magicNumber = allBinData[byteVecIdx:byteVecIdx+8]
+        byteVecIdx += 8
+        version = format(np.matmul(allBinData[byteVecIdx:byteVecIdx+4],word),'x')
+        byteVecIdx += 4
+        totalPacketNumBytes = np.matmul(allBinData[byteVecIdx:byteVecIdx+4],word)
+        byteVecIdx += 4
+        platform = format(np.matmul(allBinData[byteVecIdx:byteVecIdx+4],word),'x')
+        byteVecIdx += 4
+        frameNumber = np.matmul(allBinData[byteVecIdx:byteVecIdx+4],word)
+        byteVecIdx += 4
+        timeCpuCycles = np.matmul(allBinData[byteVecIdx:byteVecIdx+4],word)
+        byteVecIdx += 4
+        numDetObj = np.matmul(allBinData[byteVecIdx:byteVecIdx+4],word)
+        byteVecIdx += 4
+        numTlv = np.matmul(allBinData[byteVecIdx:byteVecIdx+4],word)
+        print("numTLV: ", numTlv, ", byteVecIdx: ", byteVecIdx)
+        byteVecIdx += 4
+        subFrameNumber = np.matmul(allBinData[byteVecIdx:byteVecIdx+4],word)
+        print("subFrameNumber: ", subFrameNumber, ", byteVecIdx: ", byteVecIdx)
+        byteVecIdx += 4
+
+        if headerStartIndex == -1:
+            result = TC_FAIL
+            print("************ Frame Fail, cannot find the magic words *****************")
+        else:
+            nextHeaderStartIndex = headerStartIndex + totalPacketNumBytes
+            print("header start: ", headerStartIndex, \
+                    "Packet bytes: ", totalPacketNumBytes)
+
+            if headerStartIndex + totalPacketNumBytes > readNumBytes:
+                result = TC_FAIL
+                print("********** Frame Fail, readNumBytes may not long enough ***********")
+            elif nextHeaderStartIndex + 8 < readNumBytes and checkMagicPattern(allBinData[nextHeaderStartIndex:nextHeaderStartIndex+8:1]) == 0:
+                result = TC_FAIL
+                print("********** Frame Fail, incomplete packet **********") 
+            elif numDetObj <= 0:
+                result = TC_FAIL
+                print("************ Frame Fail, numDetObj = %d *****************" % (numDetObj))
+            elif subFrameNumber > 3:
+                result = TC_FAIL
+                print("************ Frame Fail, subFrameNumber = %d *****************" % (subFrameNumber))
+            else: 
+                # Read the TLV messages
+                for tlvIdx in range(numTlv):
+                    tlvType = np.matmul(allBinData[byteVecIdx:byteVecIdx+4],word)
+                    tlvType_Uint = getUint32(allBinData[byteVecIdx+0:byteVecIdx+4:1])
+                    print("tlvIdx: ", tlvIdx, "numTLV: ", numTlv, ", byteVecIdx: ", byteVecIdx)
+                    byteVecIdx += 4
+                    tlvLen = np.matmul(allBinData[byteVecIdx:byteVecIdx+4],word)
+                    tlvLen_Uint = getUint32(allBinData[byteVecIdx+4:byteVecIdx+8:1]) 
+                    byteVecIdx += 4
+                    start_tlv_ticks = getTimeDiff(0)
+                    print("TLV type: ", tlvType, "TLV type Uint: ", tlvType_Uint)
+                    print("TLV len: ", tlvLen, "TLV len Uint: ", tlvLen_Uint)
+
+                    if tlvType == TLV_type["MMWDEMO_OUTPUT_MSG_DETECTED_POINTS"]:
+                        byteVecIdx_detObjs = byteVecIdx
+                        #print("TLV: ", tlvType, ", byteVecIdx: ", byteVecIdx, "value: ", allBinData[byteVecIdx:byteVecIdx+16])
+                    elif tlvType == TLV_type["MMWDEMO_OUTPUT_MSG_RANGE_PROFILE"]:
+                        tlvLen_rangeProfile = tlvLen
+                        byteVecIdx_rangeProfile = byteVecIdx
+                        #print("TLV: ", tlvType, ", byteVecIdx: ", byteVecIdx)
+                    elif tlvType == TLV_type["MMWDEMO_OUTPUT_MSG_NOISE_PROFILE"]:
+                        tlvLen_noiseProfile = tlvLen
+                        byteVecIdx_noiseProfile = byteVecIdx
+                        #print("TLV: ", tlvType, ", byteVecIdx: ", byteVecIdx)
+                        #processRangeNoiseProfile(bytevec, byteVecIdx, Params, False)
+                        #gatherParamStats(Params["plot"]["noiseStats"], getTimeDiff(start_tlv_ticks))
+                    elif tlvType == TLV_type["MMWDEMO_OUTPUT_MSG_AZIMUT_STATIC_HEAT_MAP"]:
+                        print("TLV azimuth heatmap: ", tlvType, ", byteVecIdx: ", byteVecIdx)
+                        # processAzimuthHeatMap(bytevec, byteVecIdx, Params)
+                        # gatherParamStats(Params["plot"]["azimuthStats"], getTimeDiff(start_tlv_ticks))
+                    elif tlvType == TLV_type["MMWDEMO_OUTPUT_MSG_RANGE_DOPPLER_HEAT_MAP"]:
+                        print("TLV range doppler heatmap: ", tlvType, ", byteVecIdx: ", byteVecIdx)
+                        # processRangeDopplerHeatMap(bytevec, byteVecIdx, Params)
+                        # gatherParamStats(Params["plot"]["dopplerStats"], getTimeDiff(start_tlv_ticks))
+                    elif tlvType == TLV_type["MMWDEMO_OUTPUT_MSG_STATS"]:
+                        print("TLV: ", tlvType, ", byteVecIdx: ", byteVecIdx)
+                        payload_start = byteVecIdx
+                        n, ifpt, tot, ifpm, icpm, afpl, ifpl = stat_info(allBinData[payload_start:payload_start+24])
+                        statistics_info =  {
+                            'interframe_processing': ifpt,
+                            'transmit_output': tot,
+                            'processing_margin': {
+                                'interframe': ifpm,
+                                'interchirp': icpm},
+                            'cpu_load': {
+                                'active_frame': afpl,
+                                'interframe': ifpl}
+                            }
+                        #print(statistics_info)
+                        # processStatistics(bytevec, byteVecIdx, Params)
+                        # gatherParamStats(Params["plot"]["cpuloadStats"], getTimeDiff(start_tlv_ticks))
+                    elif tlvType == TLV_type["MMWDEMO_OUTPUT_MSG_DETECTED_POINTS_SIDE_INFO"]:
+                        byteVecIdx_sideInfo = byteVecIdx
+                        print("TLV: ", tlvType, ", byteVecIdx: ", byteVecIdx)
+                        
+
+                    byteVecIdx += tlvLen
+
+                '''Now process the (remaining) received TLVs in the required order:
+                Side info -> detected points -> range profile '''
+                if byteVecIdx_sideInfo > -1:
+                    for obj in range(numDetObj):
+                        offset = obj*4 #each obj has 4 bytes
+                        snr, noise = process_side_info(byteVecIdx_sideInfo, allBinData, offset)
+                        detectedSNR_array.append(snr)
+                        detectedNoise_array.append(noise)
+                
+                if byteVecIdx_detObjs > -1 and numDetObj > 0:
+                    for obj in range(numDetObj):
+                        offset = obj*16 #each obj has 16 bytes
+                        #print("offset: ", offset, "obj: ", obj)
+                        x, y, z, v, compDetectedRange, detectedAzimuth, detectedElevAngle = \
+                            process_detected_object(byteVecIdx_detObjs, allBinData, offset, \
+                                                    configParameters["rangeIdxToMeters"], \
+                                                        configParameters["dopplerResolutionMps"])
+                        
+                        detectedX_array.append(x)
+                        detectedY_array.append(y)
+                        detectedZ_array.append(z)
+                        detectedV_array.append(v)
+                        detectedRange_array.append(compDetectedRange)
+                        detectedAzimuth_array.append(detectedAzimuth)
+                        detectedElevAngle_array.append(detectedElevAngle) 
+
+
+                if (byteVecIdx_rangeProfile > -1 and tlvLen_rangeProfile > -1):
+                    range_prof_data = process_range_profile(byteVecIdx_rangeProfile, tlvLen_rangeProfile, allBinData, configParameters["numRangeBins"])
+                    #print("range profile array: ", range_prof_data)
+                if (byteVecIdx_noiseProfile > -1 and tlvLen_noiseProfile > -1):
+                    range_noise_data = process_range_profile(byteVecIdx_noiseProfile, tlvLen_noiseProfile, allBinData, configParameters["numRangeBins"])
+
+
+
+        # end of changes ---------------------------
+
         # Check the parser result
         if(DEBUG):
-            print ("Parser result: ", parser_result)
-        if (parser_result == 0): 
+            print ("Parser result: ", result)
+        if (result == 0): 
             totalBytesParsed += (headerStartIndex+totalPacketNumBytes)    
             numFramesParsed+=1
             if(DEBUG):
@@ -251,31 +416,32 @@ def readAndParseData68xx(Dataport, configParameters):
             # help(parser_one_mmw_demo_output_packet)
             ##################################################################################
 
-            
-            # For example, dump all S/W objects to a csv file
-            """
-            import csv
-            if (numFramesParsed == 1):
-                democsvfile = open('mmw_demo_output.csv', 'w', newline='')                
-                demoOutputWriter = csv.writer(democsvfile, delimiter=',',
-                                        quotechar='', quoting=csv.QUOTE_NONE)                                  
-                demoOutputWriter.writerow(["frame","DetObj#","x","y","z","v","snr","noise"])            
-            
-            for obj in range(numDetObj):
-                demoOutputWriter.writerow([numFramesParsed-1, obj, detectedX_array[obj],\
-                                            detectedY_array[obj],\
-                                            detectedZ_array[obj],\
-                                            detectedV_array[obj],\
-                                            detectedSNR_array[obj],\
-                                            detectedNoise_array[obj]]) #"elevation": detectedElevation_array, \
-            """
+            current_timestamp = time.time()
 
-            detObj = {"numObj": numDetObj, "range": detectedRange_array, "range profile": rangeProfile, \
-                      "azimuth": detectedAzimuth_array, \
-                        "x": detectedX_array, "y": detectedY_array, "z": detectedZ_array, \
-                            "v": detectedV_array, "snr": detectedSNR_array}
-            
-            dataOK = 1 
+            # Create detObj dictionary
+            detObj = {
+                "timestamp": current_timestamp,
+                "numObj": convert_to_native(numDetObj),
+                "range": convert_to_native(detectedRange_array),
+                "azimuth": convert_to_native(detectedAzimuth_array),
+                "elevation": convert_to_native(detectedElevAngle_array),
+                "x": convert_to_native(detectedX_array),
+                "y": convert_to_native(detectedY_array),
+                "z": convert_to_native(detectedZ_array),
+                "v": convert_to_native(detectedV_array),
+                "snr": convert_to_native(detectedSNR_array),
+                "rangeProfile": convert_to_native(range_prof_data),
+                "noiseProfile": convert_to_native(range_noise_data)
+            }
+            dataOk = 1
+            detObj_json = json.dumps(detObj)
+            print("dataOk: ", dataOk, "detObj: ", detObj_json)
+
+
+            with open(filename, "a+") as test_data:
+                test_data.write(detObj_json + '\n')
+            test_data.close()
+
         else: 
             # error in parsing; exit the loop
             print("error in parsing this frame; continue")
@@ -293,7 +459,7 @@ def readAndParseData68xx(Dataport, configParameters):
         if(DEBUG):
             print("numFramesParsed: ", numFramesParsed)
 
-    return dataOK, frameNumber, detObj
+    return dataOk, frameNumber, detObj
 
 def _input_(prt):  # accept keyboard input and forward to control port
     while not sys.stdin.closed:
@@ -310,6 +476,20 @@ def send_reset_command(prt):
     except Exception as e:
         print(f"Failed to send reset command: {e}")
 
+running = True
+def signal_handler(sig, frame):
+    global running
+    running = False
+    print("Ctrl+C pressed. Exiting...")
+    QtWidgets.QApplication.quit()
+    # CLIport.write(('sensorStop\n').encode())
+    # print("except Send Sensor Stop!")
+    # CLIport.close()
+    # Dataport.close()
+    # print("except CLI and Dataport Stop!")
+    #win.close()
+
+
 class MyWidget(QtWidgets.QWidget):  # Change to QWidget for main application
 
     def __init__(self, parent=None):
@@ -319,7 +499,7 @@ class MyWidget(QtWidgets.QWidget):  # Change to QWidget for main application
         self.setLayout(self.mainLayout)
 
         self.timer = QtCore.QTimer(self)
-        self.timer.setInterval(100) # in milliseconds
+        self.timer.setInterval(50) # in milliseconds
         self.timer.start()
         self.timer.timeout.connect(self.onNewData)
 
@@ -419,12 +599,18 @@ class MyWidget(QtWidgets.QWidget):  # Change to QWidget for main application
         
         # Read and parse the received data
         dataOk, frameNumber, detObj = readAndParseData68xx(Dataport, configParameters)
-        if dataOk and len(detObj["x"]) > 0:
-            #print("update: ", detObj)
-            x = detObj["x"]
-            y = detObj["y"]
-            z = detObj["z"]
-            snr = detObj["snr"]
+        print("self update dataOk: ", dataOk, "detObj X: ", len(detObj["x"]))
+                    
+        x = detObj["x"]
+        y = detObj["y"]
+        z = detObj["z"]
+        snr = detObj["snr"]
+        # if dataOk and len(detObj["x"]) > 0:
+        #     print("update: ", detObj)
+        #     x = detObj["x"]
+        #     y = detObj["y"]
+        #     z = detObj["z"]
+        #     snr = detObj["snr"]
 
         return dataOk, x, y, z, snr
 
@@ -433,38 +619,53 @@ class MyWidget(QtWidgets.QWidget):  # Change to QWidget for main application
         
         # Update the data and check if the data is okay        
         dataOk, newx, newy, newz, newsnr = self.update()
-
-        x = newx
-        y = newy
-        z = newz
-        snr = newsnr
-        self.setData(x, y, z, snr)
+        if dataOk:
+            self.setData(newx, newy, newz, newsnr)
+            print(f"onNewData x: {newx}, y: {newy}, z: {newz}, snr: {newsnr}")
+        
 
 
-def main():        
-    # Configurate the serial port
-    CLIport, Dataport = serialConfig(configFileName)
+def main():
+    signal.signal(signal.SIGINT, signal_handler)  # Set up the signal handler
 
-    # Get the configuration parameters from the configuration file
-    global configParameters 
-    configParameters = parseConfigFile(configFileName)
-    #time.sleep(0.1)
-    #Reset for the first time
-    send_reset_command(CLIport)
-    time.sleep(0.1)
+    try:
+        # Configurate the serial port
+        CLIport, Dataport = serialConfig(configFileName)
 
-    app = QtWidgets.QApplication([])
+        # Get the configuration parameters from the configuration file
+        global configParameters 
+        configParameters = parseConfigFile(configFileName)
+        #time.sleep(0.1)
+        #Reset for the first time
+        send_reset_command(CLIport)
+        #time.sleep(0.1)
 
-    pg.setConfigOptions(antialias=False) # True seems to work as well
+        app = QtWidgets.QApplication([])
 
-    win = MyWidget()
-    win.show()
-    win.resize(800,600) 
-    win.raise_()
-    app.exec_()
-    CLIport.write(('sensorStop\n').encode())
-    CLIport.close()
-    Dataport.close()
+        pg.setConfigOptions(antialias=False) # True seems to work as well
+
+        win = MyWidget()
+        win.show()
+        win.resize(800,600) 
+        win.raise_()
+
+        app.exec_()
+
+    except KeyboardInterrupt:
+        CLIport.write(('sensorStop\n').encode())
+        print("except Send Sensor Stop!")
+        CLIport.close()
+        Dataport.close()
+        print("except CLI and Dataport Stop!")
+        win.close()
+    finally:
+        if 'CLIport' in locals() and CLIport.is_open:
+            CLIport.write(('sensorStop\n').encode())
+            print("finally Send Sensor Stop!")
+            CLIport.close()
+        if 'Dataport' in locals() and Dataport.is_open:
+            print("finally Dataport Stop!")
+            Dataport.close()
 
 
 if __name__ == "__main__":
