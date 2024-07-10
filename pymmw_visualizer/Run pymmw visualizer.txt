@@ -1,0 +1,6 @@
+Run pymmw visualizer
+
+1. Open the directory of virtual env: D:\ti\dev\python_tool\Python_venv\mmwave_plot\Scripts
+2. Type Activate
+3. return to the pymmw\source: cd ..\..\..\pymmw\source
+4. Run python pymmw.py -c COM11 -d COM12
