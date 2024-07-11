@@ -1,15 +1,11 @@
 #
-# Copyright (c) 2019, Manfred Constapel
-# This file is licensed under the terms of the MIT license.
-#
-
-#
 # usb and serial support
 #
 
 import sys
 import time
 import array
+import serial
 
 from lib.utility import *
 from lib.shell import *
@@ -25,6 +21,43 @@ except ImportError as e:
     print_log(e, sys._getframe())
 
 # ------------------------------------------
+
+def serialConfig(configFileName, controlPort, dataPort):
+    # global CLIport
+    # global Dataport
+    # Open the serial ports for the configuration and the data ports
+    
+    # Raspberry pi
+    #CLIport = serial.Serial('/dev/ttyACM0', 115200)
+    #Dataport = serial.Serial('/dev/ttyACM1', 921600)
+
+    # Windows
+    CLIport = serial.Serial(controlPort, 115200, timeout=0.01)#serial.Serial('COM11', 115200)
+    if CLIport is None: raise Exception('not able to connect to control port')
+
+    Dataport = serial.Serial(dataPort, 921600, timeout=0.01)#serial.Serial('COM12', 921600)
+    if Dataport is None: raise Exception('not able to connect to control port')
+
+    print(f"serial config: {CLIport} and {Dataport}")
+
+    # Read the configuration file and send it to the board
+    config = [line.rstrip('\r\n') for line in open(configFileName)]
+    for i in config:
+        CLIport.write((i+'\n').encode())
+        print(i)
+        time.sleep(0.01)
+        
+    return CLIport, Dataport
+
+#send reset to the mmWave sensor in the beginning
+def send_reset_command(prt):
+    """Send the resetSystem command to the control port."""
+    try:
+        prt.write(b'resetSystem\n')
+        #time.sleep(0.01)
+        print("Reset command sent successfully.")
+    except Exception as e:
+        print(f"Failed to send reset command: {e}")
 
 def usb_discover(vid, pid, man=None, pro=None, sid=None):
     print("usb_discovery")

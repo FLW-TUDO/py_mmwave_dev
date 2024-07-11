@@ -11,7 +11,7 @@ import sys
 import time
 import array
 
-from lib.ports import *
+from lib.serial_comm import *
 
 from lib.utility import *
 from lib.shell import *
