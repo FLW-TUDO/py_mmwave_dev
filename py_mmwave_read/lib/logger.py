@@ -33,8 +33,7 @@ def store_detObj(config_params, numDetObj, detectedRange_array, detectedAzimuth_
             "x": convert_to_native(detectedX_array),
             "y": convert_to_native(detectedY_array),
             "z": convert_to_native(detectedZ_array),
-            "v": convert_to_native(detectedV_array),
-            "snr": convert_to_native(detectedSNR_array)
+            "v": convert_to_native(detectedV_array)
         })
 
     if config_params["logMagRange"] == 1:
@@ -48,6 +47,10 @@ def store_detObj(config_params, numDetObj, detectedRange_array, detectedAzimuth_
 
     if config_params["rangeDopplerHeatMap"] == 1:
         detObj["rangeDopplerHeatMap"] = convert_to_native(range_doppler_heatmap_data)  # Placeholder
+
+    if config_params["sideInfo"] == 1:
+        detObj["snr"] = convert_to_native(detectedSNR_array)  # Placeholder
+
 
     detObj_json = json.dumps(detObj)
     dataOk = 1

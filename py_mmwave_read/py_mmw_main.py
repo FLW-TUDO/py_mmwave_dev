@@ -7,6 +7,8 @@ import signal
 import csv, json, time
 from datetime import datetime
 import atexit
+import threading
+from queue import Queue
 
 from PyQt5 import QtWidgets, QtCore
 import pyqtgraph as pg
@@ -54,6 +56,12 @@ detObj = {}
 frameData = {}    
 currentIndex = 0
 
+#Threading data queue
+data_queue = Queue()
+
+#time interval frame in ms
+interval = 50
+
 def send_reset_command(prt):
     """Send the resetSystem command to the control port."""
     try:
@@ -63,28 +71,68 @@ def send_reset_command(prt):
     except Exception as e:
         print(f"Failed to send reset command: {e}")
 
-def update_non_plot():
-        
-    dataOk = 0
-    global detObj
-    x = []
-    y = []
-    z = []
-    snr = []
-    
-    # Read and parse the received data
-    #dataOk, frameNumber, detObj = readAndParseData68xx(Dataport, configParameters)
-    dataOk, frameNumber, detObj = data_parser.readAndParseData68xx(Dataport, configParameters)
-    print("update dataOk: ", dataOk, "detObj: ", detObj)
-                
-    if dataOk and len(detObj["x"]) > 0:
-        print("update: ", detObj)
-        x = detObj["x"]
-        y = detObj["y"]
-        z = detObj["z"]
-        snr = detObj["snr"]
+##--------------- update threading ----------------------------------#
+def read_serial_data():
+    """Read data from the serial port and put it into the queue."""
+    while running:
+        try:
+            if Dataport.in_waiting > 0:
+                data = Dataport.read(Dataport.in_waiting)
+                if data:
+                    data_queue.put(data)
+                    #print("data_queue")
+        except Exception as e:
+            print(f"Error reading serial data: {e}")
 
-    return dataOk
+def read_parse_data(data_parser):
+    global detObj
+    dataOk = 0
+
+    try:
+        while not data_queue.empty():
+            data = data_queue.get()
+            dataOk, frameNumber, detObj = data_parser.readAndParseData68xx(data)
+            if dataOk and data_parser.configParameters["detectedObjects"] and len(detObj["x"]) > 0:
+                x = detObj["x"]
+                y = detObj["y"]
+                z = detObj["z"]
+                snr = detObj["snr"]
+                return dataOk, detObj
+    except Exception as e:
+        print(f"Error parsing data: {e}")
+
+    return 0, {}
+
+
+
+##----------------end of update -------------------------------------#
+
+
+# def update_non_plot(data_parser):
+        
+#     dataOk = 0
+#     global detObj
+#     x = []
+#     y = []
+#     z = []
+#     snr = []
+    
+#     # Read and parse the received data
+#     #dataOk, frameNumber, detObj = readAndParseData68xx(Dataport, configParameters)
+#     dataOk, frameNumber, detObj = data_parser.readAndParseData68xx(Dataport, data_parser.configParameters)
+#     print("update dataOk: ", dataOk, "detObj: ", detObj)
+                
+#     if dataOk and \
+#         data_parser.configParameters["detectedObjects"] and \
+#         len(detObj["x"]) > 0:
+        
+#         print("update: ", detObj)
+#         x = detObj["x"]
+#         y = detObj["y"]
+#         z = detObj["z"]
+#         snr = detObj["snr"]
+
+#     return dataOk
 
 def signal_handler(sig, frame):
     global running
@@ -110,15 +158,16 @@ def close_ports():
 
 atexit.register(close_ports)
 
+'TODO: optimize the MyWidget'
 class MyWidget(QtWidgets.QWidget):  # Change to QWidget for main application
 
-    def __init__(self, parent=None):
+    def __init__(self, data_parser, configParameters, parent=None):
         super().__init__(parent=parent)
-
-
+        self.data_parser = data_parser
+        self.configParameters = configParameters
 
         self.timer = QtCore.QTimer(self)
-        self.timer.setInterval(50) # in milliseconds
+        self.timer.setInterval(interval) # in milliseconds
         self.timer.start()
         self.timer.timeout.connect(self.onNewData)
 
@@ -151,6 +200,7 @@ class MyWidget(QtWidgets.QWidget):  # Change to QWidget for main application
 
         # Add axis labels
         self.addAxisLabels()
+        print("finish to initialize QtWidget")
 
     def setData(self, x, y, z, snr):
             #snr = snr / 0.1
@@ -219,16 +269,18 @@ class MyWidget(QtWidgets.QWidget):  # Change to QWidget for main application
         snr = []
         
         # Read and parse the received data
-        #dataOk, frameNumber, detObj = readAndParseData68xx(Dataport, configParameters)
-        dataOk, frameNumber, detObj = data_parser.readAndParseData68xx(Dataport, configParameters)
+        #dataOk, detObj = read_parse_data(self.data_parser)
+        #dataOk, frameNumber, detObj = self.data_parser.readAndParseData68xx(Dataport, self.configParameters)
         #print("self update dataOk: ", dataOk, "detObj X: ", len(detObj["x"]))
-                    
-        if dataOk and len(detObj["x"]) > 0:
-            print("update: ", detObj)
-            x = detObj["x"]
-            y = detObj["y"]
-            z = detObj["z"]
-            snr = detObj["snr"]
+
+        if not data_queue.empty():
+            data = data_queue.get()
+            dataOk, frameNumber, detObj = self.data_parser.readAndParseData68xx(data)
+            if dataOk and self.data_parser.configParameters["detectedObjects"] and len(detObj["x"]) > 0:
+                x = detObj["x"]
+                y = detObj["y"]
+                z = detObj["z"]
+                snr = detObj["snr"]
 
         return dataOk, x, y, z, snr
 
@@ -242,7 +294,7 @@ class MyWidget(QtWidgets.QWidget):  # Change to QWidget for main application
             print(f"onNewData x: {newx}, y: {newy}, z: {newz}, snr: {newsnr}")
 
 def main():
-    global configParameters, CLIport, Dataport, data_parser
+    global configParameters, CLIport, Dataport
     signal.signal(signal.SIGINT, signal_handler)  # Set up the signal handler
     nrst = True
     
@@ -255,9 +307,7 @@ def main():
         CLIport, Dataport = serialConfig(configFileName, controlPort_, dataPort_)
 
         # Get the configuration parameters from the configuration file
-        
         configParameters = parseConfigFile(configFileName)
-        #time.sleep(0.1)
 
         data_parser = DataParser(configParameters, filename)
         
@@ -270,20 +320,20 @@ def main():
             send_reset_command(CLIport)
         else:
             print('\nwaiting for reset (NRST) of the device', file=sys.stderr, flush=True)
+        
+        time.sleep(0.1)
+
+        ## new update with thread
+        read_thread = threading.Thread(target=read_serial_data)
+        read_thread.start()
 
         while running:
-        
             # Update the data and check if the data is okay
-            #dataOk, frameNumber, detObj = readAndParseData68xx(Dataport, configParameters)
-            dataOk = update_non_plot()
+            dataOk = read_parse_data(data_parser)
             #print("detObj: ", detObj)
-            if dataOk:
-                # Store the current frame into frameData
-                frameData[currentIndex] = detObj
-                currentIndex += 1
-                #print("loop", currentIndex)
-        
-            time.sleep(0.05) # Sampling frequency of 30 Hz
+            time.sleep(interval/1000) # Sampling frequency of 30 Hz
+
+        read_thread.join()
 
     except Exception as e: 
         #KeyboardInterrupt:
@@ -308,12 +358,12 @@ def main():
 def main_with_Qt():
     signal.signal(signal.SIGINT, signal_handler)  # Set up the signal handler
 
-    global configParameters, CLIport, Dataport, data_parser
+    global configParameters, CLIport, Dataport
+
     # Configurate the serial port
     CLIport, Dataport = serialConfig(configFileName, controlPort_, dataPort_)
 
     # Get the configuration parameters from the configuration file
-    
     configParameters = parseConfigFile(configFileName)
     #time.sleep(0.1)
     data_parser = DataParser(configParameters, filename)
@@ -328,13 +378,21 @@ def main_with_Qt():
     else:
         print('\nwaiting for reset (NRST) of the device', file=sys.stderr, flush=True)
 
+    time.sleep(0.1)
+
+    ## new update with thread
+    read_thread = threading.Thread(target=read_serial_data)
+    read_thread.start()
+
     try:
         app = QtWidgets.QApplication([])
         pg.setConfigOptions(antialias=False) # True seems to work as well
-        win = MyWidget()
+        win = MyWidget(data_parser, configParameters)
         win.show()
         win.resize(800, 600)
         app.exec_()
+
+        read_thread.join()
 
     except Exception as e: 
         #KeyboardInterrupt:

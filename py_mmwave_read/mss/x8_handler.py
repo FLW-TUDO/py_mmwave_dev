@@ -29,7 +29,7 @@ def process_range_profile(payload_start, tlvLen, allBinData, cfg_numRangeBins):
         range_prof_data.append(range_data_db)
         range_pymmw.append(range_data_db_pymmw)
     
-    print(f"range profile mmw: {range_data_db_pymmw}, range profile db: {range_data_db}")
+    #print(f"range profile mmw: {range_data_db_pymmw}, range profile db: {range_data_db}")
 
     return range_prof_data
 
@@ -169,3 +169,8 @@ def stat_info(dat, n=24):  # performance measures and statistical data
     afpl = intify(dat[16:20])
     ifpl = intify(dat[20: n])
     return n, ifpt, tot, ifpm, icpm, afpl, ifpl
+
+def aux_heatmap(dat, sgn, n=2):  # value for heatmaps
+    v = intify(dat[ 0: n])
+    if sgn and v > 32767: v -= 65536
+    return n, v

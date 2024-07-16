@@ -23,6 +23,7 @@ except ImportError as e:
 # ------------------------------------------
 
 def serialConfig(configFileName, controlPort, dataPort):
+    print("serialConfig")
     # global CLIport
     # global Dataport
     # Open the serial ports for the configuration and the data ports

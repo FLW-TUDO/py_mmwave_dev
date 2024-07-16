@@ -45,8 +45,9 @@ class DataParser:
         else:
             return 0
 
-    def readAndParseData68xx(self, Dataport, configParameters):
-        #print("readAndParseData68xx")
+    #def readAndParseData68xx(self, Dataport, configParameters):
+    def readAndParseData68xx(self, data):
+        
         #load from serial
         global byteBuffer, byteBufferLength
 
@@ -70,9 +71,12 @@ class DataParser:
         detectedNoise_array = []
         word = [1, 2**8, 2**16, 2**24]
 
-        readBuffer = Dataport.read(Dataport.in_waiting)
-        byteVec = np.frombuffer(readBuffer, dtype = 'uint8')
+        #readBuffer = Dataport.read(Dataport.in_waiting)
+        #byteVec = np.frombuffer(readBuffer, dtype = 'uint8')
+        byteVec = np.frombuffer(data, dtype = 'uint8')
         byteCount = len(byteVec)
+
+        #print(f"readBuffer = {readBuffer}")
 
         # Check that the buffer is not full, and then add the data to the buffer
         if (self.byteBufferLength + byteCount) < self.maxBufferSize:
@@ -113,6 +117,7 @@ class DataParser:
         
         # If magicOK is equal to 1 then process the message
         if magicOK:
+            print("magicOK is available")
             # Read the entire buffer
             readNumBytes = self.byteBufferLength
             if(DEBUG):
@@ -135,6 +140,7 @@ class DataParser:
             byteVecIdx_detObjs = -1
             byteVecIdx_rangeProfile = -1
             byteVecIdx_noiseProfile = -1
+            byteVecIdx_rangeAzimuthHeatMap = -1
             tlvLen_rangeProfile = -1
             tlvLen_noiseProfile = -1
             byteVecIdx_sideInfo = -1
@@ -165,10 +171,10 @@ class DataParser:
             numDetObj = np.matmul(allBinData[byteVecIdx:byteVecIdx+4],word)
             byteVecIdx += 4
             numTlv = np.matmul(allBinData[byteVecIdx:byteVecIdx+4],word)
-            print("numTLV: ", numTlv, ", byteVecIdx: ", byteVecIdx)
+            #print("numTLV: ", numTlv, ", byteVecIdx: ", byteVecIdx)
             byteVecIdx += 4
             subFrameNumber = np.matmul(allBinData[byteVecIdx:byteVecIdx+4],word)
-            print("subFrameNumber: ", subFrameNumber, ", byteVecIdx: ", byteVecIdx)
+            #print("subFrameNumber: ", subFrameNumber, ", byteVecIdx: ", byteVecIdx)
             byteVecIdx += 4
 
             if headerStartIndex == -1:
@@ -196,14 +202,14 @@ class DataParser:
                     for tlvIdx in range(numTlv):
                         tlvType = np.matmul(allBinData[byteVecIdx:byteVecIdx+4],word)
                         tlvType_Uint = getUint32(allBinData[byteVecIdx+0:byteVecIdx+4:1])
-                        print("tlvIdx: ", tlvIdx, "numTLV: ", numTlv, ", byteVecIdx: ", byteVecIdx)
+                        #print("tlvIdx: ", tlvIdx, "numTLV: ", numTlv, ", byteVecIdx: ", byteVecIdx)
                         byteVecIdx += 4
                         tlvLen = np.matmul(allBinData[byteVecIdx:byteVecIdx+4],word)
                         tlvLen_Uint = getUint32(allBinData[byteVecIdx+4:byteVecIdx+8:1]) 
                         byteVecIdx += 4
                         #start_tlv_ticks = getTimeDiff(0)
-                        print("TLV type: ", tlvType, "TLV type Uint: ", tlvType_Uint)
-                        print("TLV len: ", tlvLen, "TLV len Uint: ", tlvLen_Uint)
+                        # print("TLV type: ", tlvType, "TLV type Uint: ", tlvType_Uint)
+                        # print("TLV len: ", tlvLen, "TLV len Uint: ", tlvLen_Uint)
 
                         if tlvType == self.TLV_type["MMWDEMO_OUTPUT_MSG_DETECTED_POINTS"]:
                             byteVecIdx_detObjs = byteVecIdx
@@ -213,11 +219,13 @@ class DataParser:
                         elif tlvType == self.TLV_type["MMWDEMO_OUTPUT_MSG_NOISE_PROFILE"]:
                             tlvLen_noiseProfile = tlvLen
                             byteVecIdx_noiseProfile = byteVecIdx
-                        elif tlvType == self.TLV_type["MMWDEMO_OUTPUT_MSG_AZIMUT_STATIC_HEAT_MAP"]:
-                            print("TLV azimuth heatmap: ", tlvType, ", byteVecIdx: ", byteVecIdx)
-                            # processAzimuthHeatMap(bytevec, byteVecIdx, Params)
+                        elif tlvType == self.TLV_type["MMWDEMO_OUTPUT_MSG_AZIMUT_STATIC_HEAT_MAP"] or tlvType == 4:
+                            byteVecIdx_rangeAzimuthHeatMap = byteVecIdx
+                            #n, v = aux_heatmap(byteVecIdx_rangeAzimuthHeatMap, False)
+                            print("TLV azimuth heatmap: ", tlvType, ", byteVecIdx: ", byteVecIdx_rangeAzimuthHeatMap)
+                            #processAzimuthHeatMap(bytevec, byteVecIdx, Params)
                             # gatherParamStats(Params["plot"]["azimuthStats"], getTimeDiff(start_tlv_ticks))
-                        elif tlvType == self.TLV_type["MMWDEMO_OUTPUT_MSG_RANGE_DOPPLER_HEAT_MAP"]:
+                        elif tlvType == self.TLV_type["MMWDEMO_OUTPUT_MSG_RANGE_DOPPLER_HEAT_MAP"] or tlvType == 5:
                             print("TLV range doppler heatmap: ", tlvType, ", byteVecIdx: ", byteVecIdx)
                             # processRangeDopplerHeatMap(bytevec, byteVecIdx, Params)
                             # gatherParamStats(Params["plot"]["dopplerStats"], getTimeDiff(start_tlv_ticks))
@@ -241,25 +249,27 @@ class DataParser:
                         elif tlvType == self.TLV_type["MMWDEMO_OUTPUT_MSG_DETECTED_POINTS_SIDE_INFO"]:
                             byteVecIdx_sideInfo = byteVecIdx
 
+                        #print(f"before adding byteVecIdx: {byteVecIdx}, tlvLen: {tlvLen}")
                         byteVecIdx += tlvLen
+                        #print(f"after adding byteVecIdx: {byteVecIdx}, tlvLen: {tlvLen}")
 
                     '''Now process the (remaining) received TLVs in the required order:
                     Side info -> detected points -> range profile '''
-                    if configParameters["sideInfo"] and byteVecIdx_sideInfo > -1:
+                    if self.configParameters["sideInfo"] and byteVecIdx_sideInfo > -1:
                         for obj in range(numDetObj):
                             offset = obj*4 #each obj has 4 bytes
                             snr, noise = process_side_info(byteVecIdx_sideInfo, allBinData, offset)
                             detectedSNR_array.append(snr)
                             detectedNoise_array.append(noise)
                     
-                    if configParameters["detectedObjects"] == 1 and (byteVecIdx_detObjs > -1 and numDetObj > 0):
+                    if self.configParameters["detectedObjects"] == 1 and (byteVecIdx_detObjs > -1 and numDetObj > 0):
                         for obj in range(numDetObj):
                             offset = obj*16 #each obj has 16 bytes
                             #print("offset: ", offset, "obj: ", obj)
                             x, y, z, v, compDetectedRange, detectedAzimuth, detectedElevAngle = \
                                 process_detected_object(byteVecIdx_detObjs, allBinData, offset, \
-                                                        configParameters["rangeIdxToMeters"], \
-                                                            configParameters["dopplerResolutionMps"])
+                                                        self.configParameters["rangeIdxToMeters"], \
+                                                            self.configParameters["dopplerResolutionMps"])
                             
                             detectedX_array.append(x)
                             detectedY_array.append(y)
@@ -270,11 +280,11 @@ class DataParser:
                             detectedElevAngle_array.append(detectedElevAngle) 
 
 
-                    if configParameters["logMagRange"] == 1 and (byteVecIdx_rangeProfile > -1 and tlvLen_rangeProfile > -1):
-                        range_prof_data = process_range_profile(byteVecIdx_rangeProfile, tlvLen_rangeProfile, allBinData, configParameters["numRangeBins"])
-                        #print("range profile array: ", range_prof_data)
-                    if configParameters["noiseProfile"] == 1 and (byteVecIdx_noiseProfile > -1 and tlvLen_noiseProfile > -1):
-                        range_noise_data = process_range_profile(byteVecIdx_noiseProfile, tlvLen_noiseProfile, allBinData, configParameters["numRangeBins"])
+                    if self.configParameters["logMagRange"] == 1 and (byteVecIdx_rangeProfile > -1 and tlvLen_rangeProfile > -1):
+                        range_prof_data = process_range_profile(byteVecIdx_rangeProfile, tlvLen_rangeProfile, allBinData, self.configParameters["numRangeBins"])
+
+                    if self.configParameters["noiseProfile"] == 1 and (byteVecIdx_noiseProfile > -1 and tlvLen_noiseProfile > -1):
+                        range_noise_data = process_range_profile(byteVecIdx_noiseProfile, tlvLen_noiseProfile, allBinData, self.configParameters["numRangeBins"])
 
 
             # end of changes ---------------------------
@@ -292,7 +302,7 @@ class DataParser:
                 # For array dimensions, see help(parser_one_mmw_demo_output_packet)
                 # help(parser_one_mmw_demo_output_packet)
                 ##################################################################################
-                dataOk, detObj = store_detObj(configParameters, numDetObj, detectedRange_array, detectedAzimuth_array, detectedElevAngle_array,
+                dataOk, detObj = store_detObj(self.configParameters, numDetObj, detectedRange_array, detectedAzimuth_array, detectedElevAngle_array,
                     detectedX_array, detectedY_array, detectedZ_array, detectedV_array, detectedSNR_array, 
                     range_prof_data, range_noise_data, range_doppler_heatmap_data, range_azimuth_heatmap_data, self.filename)
 
