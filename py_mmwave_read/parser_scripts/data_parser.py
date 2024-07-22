@@ -100,9 +100,9 @@ class DataParser:
             if startIdx:
                 
                 # Remove the data before the first start index
-                if startIdx[0] > 0 and startIdx[0] < byteBufferLength:
-                    self.byteBuffer[:byteBufferLength-startIdx[0]] = self.byteBuffer[startIdx[0]:self.byteBufferLength]
-                    self.byteBuffer[byteBufferLength-startIdx[0]:] = np.zeros(len(self.byteBuffer[self.byteBufferLength-startIdx[0]:]),dtype = 'uint8')
+                if startIdx[0] > 0 and startIdx[0] < self.byteBufferLength:
+                    self.byteBuffer[:self.byteBufferLength-startIdx[0]] = self.byteBuffer[startIdx[0]:self.byteBufferLength]
+                    self.byteBuffer[self.byteBufferLength-startIdx[0]:] = np.zeros(len(self.byteBuffer[self.byteBufferLength-startIdx[0]:]),dtype = 'uint8')
                     self.byteBufferLength = self.byteBufferLength - startIdx[0]
                     
                 # Check that there have no errors with the byte buffer length

@@ -103,36 +103,16 @@ def read_parse_data(data_parser):
 
     return 0, {}
 
+#parse data if visualizer is active
+def parse_data(data_parser, data):
+    dataOk, frameNumber, detObj = data_parser.readAndParseData68xx(data)
+    if dataOk and data_parser.configParameters["detectedObjects"] and len(detObj["x"]) > 0:
+        return dataOk, detObj
+    return 0, {}
+
 
 
 ##----------------end of update -------------------------------------#
-
-
-# def update_non_plot(data_parser):
-        
-#     dataOk = 0
-#     global detObj
-#     x = []
-#     y = []
-#     z = []
-#     snr = []
-    
-#     # Read and parse the received data
-#     #dataOk, frameNumber, detObj = readAndParseData68xx(Dataport, configParameters)
-#     dataOk, frameNumber, detObj = data_parser.readAndParseData68xx(Dataport, data_parser.configParameters)
-#     print("update dataOk: ", dataOk, "detObj: ", detObj)
-                
-#     if dataOk and \
-#         data_parser.configParameters["detectedObjects"] and \
-#         len(detObj["x"]) > 0:
-        
-#         print("update: ", detObj)
-#         x = detObj["x"]
-#         y = detObj["y"]
-#         z = detObj["z"]
-#         snr = detObj["snr"]
-
-#     return dataOk
 
 def signal_handler(sig, frame):
     global running
@@ -160,20 +140,24 @@ atexit.register(close_ports)
 
 'TODO: optimize the MyWidget'
 class MyWidget(QtWidgets.QWidget):  # Change to QWidget for main application
+    newDataSignal = QtCore.pyqtSignal(object)
 
     def __init__(self, data_parser, configParameters, parent=None):
         super().__init__(parent=parent)
         self.data_parser = data_parser
         self.configParameters = configParameters
 
-        self.timer = QtCore.QTimer(self)
-        self.timer.setInterval(interval) # in milliseconds
-        self.timer.start()
-        self.timer.timeout.connect(self.onNewData)
+        #new
+        self.newDataSignal.connect(self.update_plot)
 
+        # self.timer = QtCore.QTimer(self)
+        # self.timer.setInterval(interval) # in milliseconds
+        # self.timer.start()
+        # self.timer.timeout.connect(self.onNewData)
+
+        # Create the 3D plot
         self.mainLayout = QtWidgets.QVBoxLayout()
         self.setLayout(self.mainLayout)
-        # Create the 3D plot
         self.glViewWidget = gl.GLViewWidget()
         #self.glViewWidget.setBackgroundColor('w')  # Set background color to white
         self.mainLayout.addWidget(self.glViewWidget)
@@ -258,40 +242,57 @@ class MyWidget(QtWidgets.QWidget):  # Change to QWidget for main application
         colors[:, 3] = 1     # Alpha channel
         return colors
 
-    # Funtion to update the data and display in the plot
-    def update(self):
+    # # Funtion to update the data and display in the plot
+    # def update(self):
         
-        dataOk = 0
-        global detObj
-        x = []
-        y = []
-        z = []
-        snr = []
+    #     dataOk = 0
+    #     global detObj
+    #     x = []
+    #     y = []
+    #     z = []
+    #     snr = []
         
-        # Read and parse the received data
-        #dataOk, detObj = read_parse_data(self.data_parser)
-        #dataOk, frameNumber, detObj = self.data_parser.readAndParseData68xx(Dataport, self.configParameters)
-        #print("self update dataOk: ", dataOk, "detObj X: ", len(detObj["x"]))
+    #     # Read and parse the received data
+    #     #dataOk, detObj = read_parse_data(self.data_parser)
+    #     #dataOk, frameNumber, detObj = self.data_parser.readAndParseData68xx(Dataport, self.configParameters)
+    #     #print("self update dataOk: ", dataOk, "detObj X: ", len(detObj["x"]))
 
-        if not data_queue.empty():
-            data = data_queue.get()
-            dataOk, frameNumber, detObj = self.data_parser.readAndParseData68xx(data)
-            if dataOk and self.data_parser.configParameters["detectedObjects"] and len(detObj["x"]) > 0:
-                x = detObj["x"]
-                y = detObj["y"]
-                z = detObj["z"]
-                snr = detObj["snr"]
+    #     if not data_queue.empty():
+    #         data = data_queue.get()
+    #         dataOk, frameNumber, detObj = self.data_parser.readAndParseData68xx(data)
+    #         if dataOk and self.data_parser.configParameters["detectedObjects"] and len(detObj["x"]) > 0:
+    #             x = detObj["x"]
+    #             y = detObj["y"]
+    #             z = detObj["z"]
+    #             snr = detObj["snr"]
 
-        return dataOk, x, y, z, snr
+    #     return dataOk, x, y, z, snr
 
 
-    def onNewData(self):
+    # def onNewData(self):
         
-        # Update the data and check if the data is okay        
-        dataOk, newx, newy, newz, newsnr = self.update()
-        if dataOk and visualizer:
-            self.setData(newx, newy, newz, newsnr)
-            print(f"onNewData x: {newx}, y: {newy}, z: {newz}, snr: {newsnr}")
+    #     # Update the data and check if the data is okay        
+    #     dataOk, newx, newy, newz, newsnr = self.update()
+    #     if dataOk and visualizer:
+    #         self.setData(newx, newy, newz, newsnr)
+    #         print(f"onNewData x: {newx}, y: {newy}, z: {newz}, snr: {newsnr}")
+
+    def update_plot(self, data):
+        x, y, z, snr = data
+        self.setData(x, y, z, snr)
+
+    def update_data(self):
+        while running:
+            if not data_queue.empty():
+                data = data_queue.get()
+                dataOk, detObj = parse_data(self.data_parser, data)
+                if dataOk:
+                    x = detObj["x"]
+                    y = detObj["y"]
+                    z = detObj["z"]
+                    snr = detObj["snr"]
+                    self.newDataSignal.emit((x, y, z, snr))
+            #time.sleep(interval/1000)
 
 def main():
     global configParameters, CLIport, Dataport
@@ -331,7 +332,7 @@ def main():
             # Update the data and check if the data is okay
             dataOk = read_parse_data(data_parser)
             #print("detObj: ", detObj)
-            time.sleep(interval/1000) # Sampling frequency of 30 Hz
+            #time.sleep(interval/1000) # Sampling frequency of 30 Hz
 
         read_thread.join()
 
@@ -365,7 +366,7 @@ def main_with_Qt():
 
     # Get the configuration parameters from the configuration file
     configParameters = parseConfigFile(configFileName)
-    #time.sleep(0.1)
+
     data_parser = DataParser(configParameters, filename)
 
     #Reset for the first time
@@ -390,9 +391,15 @@ def main_with_Qt():
         win = MyWidget(data_parser, configParameters)
         win.show()
         win.resize(800, 600)
+
+        #new update
+        data_update_thread = threading.Thread(target=win.update_data)
+        data_update_thread.start()
+
         app.exec_()
 
         read_thread.join()
+        data_update_thread.join()
 
     except Exception as e: 
         #KeyboardInterrupt:
