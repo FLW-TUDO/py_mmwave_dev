@@ -141,6 +141,7 @@ class DataParser:
             byteVecIdx_rangeProfile = -1
             byteVecIdx_noiseProfile = -1
             byteVecIdx_rangeAzimuthHeatMap = -1
+            byteVecIdx_rangeDopplerHeatMap = -1
             tlvLen_rangeProfile = -1
             tlvLen_noiseProfile = -1
             byteVecIdx_sideInfo = -1
@@ -221,10 +222,8 @@ class DataParser:
                             byteVecIdx_noiseProfile = byteVecIdx
                         elif tlvType == self.TLV_type["MMWDEMO_OUTPUT_MSG_AZIMUT_STATIC_HEAT_MAP"] or tlvType == 4:
                             byteVecIdx_rangeAzimuthHeatMap = byteVecIdx
-                            #n, v = aux_heatmap(byteVecIdx_rangeAzimuthHeatMap, False)
-                            print("TLV azimuth heatmap: ", tlvType, ", byteVecIdx: ", byteVecIdx_rangeAzimuthHeatMap)
-                            #processAzimuthHeatMap(bytevec, byteVecIdx, Params)
-                            # gatherParamStats(Params["plot"]["azimuthStats"], getTimeDiff(start_tlv_ticks))
+                            #range_azimuth_heatmap_data = processAzimuthHeatMap(allBinData, byteVecIdx_rangeAzimuthHeatMap, self.configParameters["numRangeBins"], self.configParameters["numRangeBins"])
+                            #print("TLV azimuth heatmap: ", tlvType, ", byteVecIdx: ", byteVecIdx_rangeAzimuthHeatMap)
                         elif tlvType == self.TLV_type["MMWDEMO_OUTPUT_MSG_RANGE_DOPPLER_HEAT_MAP"] or tlvType == 5:
                             print("TLV range doppler heatmap: ", tlvType, ", byteVecIdx: ", byteVecIdx)
                             # processRangeDopplerHeatMap(bytevec, byteVecIdx, Params)
