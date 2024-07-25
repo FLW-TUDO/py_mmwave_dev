@@ -13,6 +13,13 @@ def convert_to_native(obj):
         return float(obj)
     elif isinstance(obj, np.ndarray):
         return obj.tolist()
+    elif isinstance(obj, np.complex128):
+        print("convert np azimuth")
+        return obj.tolist()
+    elif isinstance(obj, (np.float32, np.float64)):
+        return float(obj)
+    elif isinstance(obj, (np.int32, np.int64)):
+        return int(obj)
     else:
         return obj
     
@@ -43,7 +50,14 @@ def store_detObj(config_params, numDetObj, detectedRange_array, detectedAzimuth_
         detObj["noiseProfile"] = convert_to_native(range_noise_data)
 
     if config_params["rangeAzimuthHeatMap"] == 1:
-        detObj["rangeAzimuthHeatMap"] = convert_to_native(range_azimuth_heatmap_data)  # Placeholder
+        range_azimuth_heatmap_magnitude = np.abs(range_azimuth_heatmap_data)
+        range_azimuth_heatmap_phase = np.angle(range_azimuth_heatmap_data)
+        detObj["rangeAzimuthHeatMap"] = {
+            "magnitude": convert_to_native(range_azimuth_heatmap_magnitude),
+            "phase": convert_to_native(range_azimuth_heatmap_phase)
+        }
+        # detObj["rangeAzimuthHeatMap"] = convert_to_native(range_azimuth_heatmap_data)  # Placeholder
+        print("rangeAzimuthHeatMap: ", detObj["rangeAzimuthHeatMap"])
 
     if config_params["rangeDopplerHeatMap"] == 1:
         detObj["rangeDopplerHeatMap"] = convert_to_native(range_doppler_heatmap_data)  # Placeholder
@@ -51,7 +65,7 @@ def store_detObj(config_params, numDetObj, detectedRange_array, detectedAzimuth_
     if config_params["sideInfo"] == 1:
         detObj["snr"] = convert_to_native(detectedSNR_array)  # Placeholder
 
-
+    print("before json dumps")
     detObj_json = json.dumps(detObj)
     dataOk = 1
 

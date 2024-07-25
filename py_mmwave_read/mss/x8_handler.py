@@ -156,10 +156,35 @@ def process_detected_object(payload_start, allBinData, offset, config_rangeIdxTo
 
     return x, y, z, v, compDetectedRange, detectedAzimuth, detectedElevAngle
 
+#def processAzimuthHeatMap(allBinData, byteVecIdx, numRangeBins, numAngleBins):
+def processAzimuthHeatMap(allBinData, byteVecIdx, numRangeBins, numAngleBins, numVirtAnt):
+    azimutHeatMap = np.zeros((numRangeBins, numAngleBins), dtype=np.complex_)
+    for rangeIdx in range(numRangeBins):
+        for angleIdx in range(numAngleBins):
+            real = int.from_bytes(allBinData[byteVecIdx:byteVecIdx+2], byteorder='little', signed=True)
+            imag = int.from_bytes(allBinData[byteVecIdx+2:byteVecIdx+4], byteorder='little', signed=True)
+            azimutHeatMap[rangeIdx, angleIdx] = complex(real, imag)
+            byteVecIdx += 4
+    print(f"Azimuth Heatmap: {azimutHeatMap}, shape: {azimutHeatMap.shape}, type: {azimutHeatMap.dtype}")
+    return azimutHeatMap
+
+def processRangeDopplerHeatMap(allBinData, byteVecIdx, numRangeBins, numDopplerBins):
+    RangeDopplerHeatMap = np.zeros((numRangeBins, numDopplerBins), dtype=np.int16)
+    for rangeIdx in range(numRangeBins):
+        for dopplerIdx in range(numDopplerBins):
+            value = int.from_bytes(allBinData[byteVecIdx:byteVecIdx+2], byteorder='little', signed=True)
+            RangeDopplerHeatMap[rangeIdx, dopplerIdx] = value
+            byteVecIdx += 2
+    print(f"Doppler Heatmap:{RangeDopplerHeatMap}")
+    return RangeDopplerHeatMap
+
+
+## ------------ from pymmw tool ----------------------- ###
                 
 def aux_profile(dat, n=2):  # value of range or noise profile
     v = intify(dat[ 0: n])
     return n, v
+
 
 def stat_info(dat, n=24):  # performance measures and statistical data
     ifpt = intify(dat[ 0: 4])
@@ -169,6 +194,7 @@ def stat_info(dat, n=24):  # performance measures and statistical data
     afpl = intify(dat[16:20])
     ifpl = intify(dat[20: n])
     return n, ifpt, tot, ifpm, icpm, afpl, ifpl
+
 
 def aux_heatmap(dat, sgn, n=2):  # value for heatmaps
     v = intify(dat[ 0: n])

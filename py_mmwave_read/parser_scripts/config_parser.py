@@ -75,17 +75,19 @@ def parseConfigFile(configFileName):
     numChirpsPerFrame = (chirpEndIdx - chirpStartIdx + 1) * numLoops
     configParameters["numDopplerBins"] = numChirpsPerFrame / numTxAnt
     configParameters["numRangeBins"] = numAdcSamplesRoundTo2
+    configParameters["numVirtAnt"] = numTxAnt * numRxAnt
     configParameters["rangeResolutionMeters"] = (3e8 * digOutSampleRate * 1e3) / (2 * freqSlopeConst * 1e12 * numAdcSamples)
     configParameters["rangeIdxToMeters"] = (3e8 * digOutSampleRate * 1e3) / (2 * freqSlopeConst * 1e12 * configParameters["numRangeBins"])
     configParameters["dopplerResolutionMps"] = 3e8 / (2 * startFreq * 1e9 * (idleTime + rampEndTime) * 1e-6 * configParameters["numDopplerBins"] * numTxAnt)
     configParameters["maxRange"] = (300 * 0.9 * digOutSampleRate)/(2 * freqSlopeConst * 1e3)
     configParameters["maxVelocity"] = 3e8 / (4 * startFreq * 1e9 * (idleTime + rampEndTime) * 1e-6 * numTxAnt)
+    
+    #config of Gui Monitor
     configParameters["detectedObjects"] = detectedObjects
     configParameters["logMagRange"] = logMagRange
     configParameters["noiseProfile"] = noiseProfile
     configParameters["rangeAzimuthHeatMap"] = rangeAzimuthHeatMap
     configParameters["rangeDopplerHeatMap"] = rangeDopplerHeatMap
     configParameters["sideInfo"] = sideInfo
-    #print(f"cfg param: chirpEndIdx: {chirpEndIdx}, chirpStartIdx: {chirpStartIdx}, numAdcSamples: {numAdcSamples}, \
-    #      digOutSampleRate: {digOutSampleRate}, freqSlopeConst: {freqSlopeConst}, numRangeBins: {configParameters["numRangeBins"]}")  
+    print(f"cfg param: chirpEndIdx: {chirpEndIdx}, chirpStartIdx: {chirpStartIdx}, numAdcSamples: {numAdcSamples}, freqSlopeConst: {freqSlopeConst}, numDopplerBins: {numChirpsPerFrame / numTxAnt}, numRangeBins: {numAdcSamplesRoundTo2}")  
     return configParameters

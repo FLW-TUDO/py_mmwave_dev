@@ -60,7 +60,7 @@ currentIndex = 0
 data_queue = Queue()
 
 #time interval frame in ms
-interval = 50
+interval = 250
 
 def send_reset_command(prt):
     """Send the resetSystem command to the control port."""
@@ -80,7 +80,7 @@ def read_serial_data():
                 data = Dataport.read(Dataport.in_waiting)
                 if data:
                     data_queue.put(data)
-                    #print("data_queue")
+                    #print(f"data_queue: {data}")
         except Exception as e:
             print(f"Error reading serial data: {e}")
 
