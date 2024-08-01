@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<?ccsproject version="1.0"?>
+<projectOptions>
+	<ccsVariant value="0:Eclipse-based"/>
+	<ccsVersion value="12.7.0"/>
+	<deviceVariant value="TMS320C67XX.IWR6843"/>
+	<deviceFamily value="C6000"/>
+	<deviceEndianness value="little"/>
+	<codegenToolVersion value="8.3.12"/>
+	<isElfFormat value="true"/>
+	<linkerCommandFile value="mmw_dss_linker.cmd"/>
+	<rts value="libc.a"/>
+	<createSlaveProjects value=""/>
+	<templateProperties value="id=out_of_box_6843_isk_dss.projectspec.out_of_box_6843_isk_dss,type=rtsc,products=com.ti.rtsc.SYSBIOS:6.73.01.01;com.ti.MMWAVE_SDK:03.06.00.00-LTS;,xdcToolsVersion=3.50.08.24_core,target=ti.targets.elf.C674,platform=ti.platforms.c6x:IWR68XX:false:600,endianness=little,output_format=elf,buildProfile=release,configuroOptions=--compileOptions &quot;--enum_type=int &quot; "/>
+	<origin value="D:\ti\radar_toolbox_2_00_00_06\source\ti\examples\Out_Of_Box_Demo\src\xwr6843ISK\out_of_box_6843_isk_dss.projectspec"/>
+	<filesToOpen value=""/>
+	<isTargetManual value="false"/>
+</projectOptions>

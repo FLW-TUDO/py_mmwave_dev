@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="windows-1252"?>
+<!--  This file conforms to the DTD xdc/bld/build.dtd -->
+<package name="configPkg" version="" producerId="undefined">
+    <units>
+    </units>
+    <sources>
+        <srcFile name="package/cfg/mmw_dss_pe674.c"/>
+    </sources>
+    <configscripts>
+        <srcFile name="D:/ti/dev/mmWave/out_of_box_6843_isk_dss/mmw_dss.cfg"/>
+    </configscripts>
+    <makefiles>
+        <srcFile name="package.mak" src="package.bld"/>
+        <srcFile name="package/package.xdc.dep" src="package.xdc"/>
+        <srcFile name="package/cfg/mmw_dss_pe674.mak" src="package.bld"/>
+        <srcFile name="package/cfg/mmw_dss_pe674.oe674.dep" src="package/cfg/mmw_dss_pe674.c"/>
+        <srcFile name="package/cfg/mmw_dss_pe674.dep" src="package/cfg/mmw_dss_pe674.cfg"/>
+        <srcFile name="package/cfg/mmw_dss.xe674.mak" src="package.bld"/>
+        <srcFile name="package/rel/configPkg.tar.dep" src="package/rel/configPkg.xdc.inc"/>
+    </makefiles>
+    <targets>
+        <target name="ti.targets.elf.C674"
+            version="ti.targets.elf.C674{1,0,8.3,12"
+            rawVersion="8.3.12"
+            platform="ti.platforms.evmDA830"
+            isa="674"
+            suffix="e674"
+            rootDir="D:/ti/ccs1270/ccs/tools/compiler/ti-cgt-c6000_8.3.12"
+            os="undefined"
+            rts="ti.targets.rts6000">
+            <model endian="little"
+                codeModel="undefined"
+                dataModel="undefined"/>
+        </target>
+    </targets>
+    <libraries>
+    </libraries>
+    <configurations>
+    <configuration name="mmw_dss"
+        pname="mmw_dss.pe674"
+        target="ti.targets.elf.C674"
+        platform="ti.platforms.c6x:IWR68XX:false:600"
+        profile="release"
+        isPartial="false"
+        xCfgScript="package/cfg/mmw_dss_pe674.cfg"
+        xCfgPrefix="package/cfg/mmw_dss_pe674"
+        cfgScript="D:/ti/dev/mmWave/out_of_box_6843_isk_dss/mmw_dss.cfg"
+        cfgArgs="null"
+        />
+    </configurations>
+    <executables>
+    <executable name="mmw_dss"
+        pname="mmw_dss.xe674"
+        target="ti.targets.elf.C674"
+        platform="ti.platforms.c6x:IWR68XX:false:600"
+        profile="release"
+        xCfgScript="package/cfg/mmw_dss_pe674.cfg"
+        xCfgPrefix="package/cfg/mmw_dss_pe674"
+        cfgScript="D:/ti/dev/mmWave/out_of_box_6843_isk_dss/mmw_dss.cfg"
+        cfgArgs="null"
+        />
+    </executables>
+    <tests>
+    <test exeName="mmw_dss.xe674"
+        args=""
+        groupName="mmw_dss.xe674"
+        refOutput="undefined"
+        refExitCode="0"
+        execArgs=""
+        />
+    </tests>
+    <releases relDir="package/rel/">
+    <release name="configPkg"
+        pname="configPkg.tar"
+        label="default"
+    >
+        <file name="package/package.bld.xml"/>
+        <file name="package/build.cfg"/>
+        <file name="package/package.xdc.inc"/>
+    </release>
+    </releases>
+    <repositories>
+    </repositories>
+</package>
