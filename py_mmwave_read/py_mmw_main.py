@@ -84,6 +84,7 @@ def read_serial_data():
         except Exception as e:
             print(f"Error reading serial data: {e}")
 
+#when visualizer is disabled
 def read_parse_data(data_parser):
     global detObj
     dataOk = 0
@@ -97,6 +98,7 @@ def read_parse_data(data_parser):
                 y = detObj["y"]
                 z = detObj["z"]
                 snr = detObj["snr"]
+                'TODO: either ADD PUBLISHER TO ROS2 NODE here or in data_parser, please create new class or script under lib folder'
                 return dataOk, detObj
     except Exception as e:
         print(f"Error parsing data: {e}")
@@ -107,6 +109,7 @@ def read_parse_data(data_parser):
 def parse_data(data_parser, data):
     dataOk, frameNumber, detObj = data_parser.readAndParseData68xx(data)
     if dataOk and data_parser.configParameters["detectedObjects"] and len(detObj["x"]) > 0:
+        'TODO: either ADD PUBLISHER TO ROS2 NODE here or in data_parser, please create new class or script under lib folder'
         return dataOk, detObj
     return 0, {}
 

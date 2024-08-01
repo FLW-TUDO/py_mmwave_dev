@@ -51,6 +51,7 @@ output is sent out every frame as a packet containing a frame header and TLV. Mo
         * Range-Azimuth Heatmap (TLV Type 4): 2D FFT of Azimuth heatmap derived from Range
         * Range-Doppler Heatmap (TLV Type 5): 2D FFT of Doppler heatmap derived from Range 
         * Side Infor for Detected Points (TLV Type 7): SNR and Noise values of each point cloud
+    * To obtain more densed point cloud, configure the `cfarCfg -1 0 2 8 4 3 0 4* 1 cfarCfg -1 1 0 4 2 3 1 5* 1` the number with asterix must be changed, less means the less threshold (dB) to remove the noise, greater value means more threshold to filter out the noise.
 
 To terminate the measurement, user can press Ctrl+C.
 

@@ -304,6 +304,8 @@ class DataParser:
                 dataOk, detObj = store_detObj(self.configParameters, numDetObj, detectedRange_array, detectedAzimuth_array, detectedElevAngle_array,
                     detectedX_array, detectedY_array, detectedZ_array, detectedV_array, detectedSNR_array, 
                     range_prof_data, range_noise_data, range_doppler_heatmap_data, range_azimuth_heatmap_data, self.filename)
+                
+                'TODO: either ADD PUBLISHER TO ROS2 NODE here or in main,please create new class or script under lib folder'
 
             else: 
                 # error in parsing; exit the loop

@@ -1,7 +1,7 @@
 {
     "configFileName": "config/xwr68xx_profile_2024_07_16_20_fps.cfg",
     "visualizer": true,
-    "controlPort": "COM6",
-    "dataPort": "COM5",
-    "fileName": "log/test_node_x_mmwave_sensor"
+    "controlPort": "COM10",
+    "dataPort": "COM9",
+    "fileName": "log/test_robomaster_moves_mmwave_sensor_10_cfar"
 }
